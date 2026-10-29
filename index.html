@@ -1,0 +1,840 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <title>Duel Hutan Seru - 2D Edition</title>
+  <link href="https://fonts.googleapis.com/css2?family=Fredoka:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <style>
+    /* ================= BASE STYLES ================= */
+    * { box-sizing: border-box; }
+    html, body { 
+        margin: 0; padding: 0; width: 100%; height: 100%;
+        overflow: hidden; background: #193f2b; font-family: 'Fredoka', sans-serif;
+        touch-action: none; /* Mencegah zoom/scroll */
+        user-select: none; -webkit-user-select: none;
+    }
+    button { cursor: pointer; font-family: 'Fredoka', sans-serif; touch-action: manipulation; }
+
+    /* ================= LAYOUT ================= */
+    .app-container {
+        width: 100%; height: 100%;
+        display: flex; flex-direction: column;
+        padding: 10px; background: linear-gradient(180deg, #e2f7bc, #f7f4cf);
+        position: relative;
+    }
+    
+    /* Screen Shake Animation */
+    @keyframes shake {
+        0% { transform: translate(0, 0); }
+        20% { transform: translate(-4px, 3px) rotate(-1deg); }
+        40% { transform: translate(3px, -4px) rotate(1deg); }
+        60% { transform: translate(-3px, -2px) rotate(0deg); }
+        80% { transform: translate(4px, 3px) rotate(1deg); }
+        100% { transform: translate(0, 0); }
+    }
+    .shake-active { animation: shake 0.3s cubic-bezier(.36,.07,.19,.97) both; }
+
+    .header { text-align: center; margin-bottom: 8px; }
+    .game-title { margin: 0; font-size: 22px; color: #244c32; text-shadow: 2px 2px 0 #fff; }
+
+    /* ================= HUD ================= */
+    .hud { 
+        display: grid; grid-template-columns: 1fr auto 1fr; gap: 8px; 
+        margin-bottom: 10px; align-items: center; z-index: 10;
+    }
+    .hud-card { 
+        background: #fff8df; border: 3px solid #326f42; border-radius: 12px; 
+        padding: 6px 10px; box-shadow: 0 4px 0 #a2bf80; position: relative;
+    }
+    .hud-card.p2 { border-color: #ad6040; text-align: right; box-shadow: 0 4px 0 #e8a88d; }
+    .name { font-weight: 700; font-size: 13px; margin-bottom: 4px; color: #193f2b; }
+    .bar-bg { 
+        height: 14px; border-radius: 99px; background: #35533a; 
+        overflow: hidden; border: 2px solid #fff; position: relative;
+    }
+    .hp-fill { 
+        height: 100%; width: 100%; background: #67c858; 
+        transition: width 0.15s ease-out, background-color 0.2s; 
+    }
+    .hud-card.p2 .hp-fill { background: #e85e43; float: right; }
+    .hp-text {
+        position: absolute; width: 100%; text-align: center; top: -1px; left: 0;
+        font-size: 10px; font-weight: bold; color: white; text-shadow: 1px 1px 0 #000;
+    }
+    .ammo-text { font-size: 12px; font-weight: 700; color: #193f2b; margin-top: 4px; text-align: left; }
+    
+    .timer-card { 
+        background: #234f37; color: white; border: 3px solid #ffcf64; 
+        border-radius: 12px; box-shadow: 0 4px 0 #a2bf80; padding: 4px 12px; text-align: center; 
+    }
+    .timer-text { font-size: 22px; font-weight: 800; line-height: 1; text-shadow: 1px 2px 0 #000;}
+
+    /* ================= ARENA & WORLD ================= */
+    .arena { 
+        position: relative; flex: 1; min-height: 200px;
+        overflow: hidden; border: 5px solid #376f40; border-radius: 16px; 
+        background: linear-gradient(180deg, #92d9ed 0%, #d4efd0 43%, #9ccf72 44%, #76b45e 100%); 
+        box-shadow: 0 6px 0 #7b9c52, inset 0 -10px 0 #6ca653; isolation: isolate; 
+    }
+    /* Environment Decorations */
+    .sun { position: absolute; top: 5%; right: 10%; width: 45px; height: 45px; border-radius: 50%; background: #ffe49a; box-shadow: 0 0 30px #fff0aa; }
+    .hill { position: absolute; bottom: 40%; width: 70%; height: 48%; border-radius: 50% 50% 0 0; background: #6aaa66; opacity: .65; }
+    .hill.one { left: -15%; } .hill.two { right: -20%; background: #4f9e68; transform: translateY(20%); }
+
+    #entities-layer { position: absolute; top: 0; left: 0; width: 100%; height: 100%; }
+
+    /* ================= GAME ENTITIES ================= */
+    .sprite { 
+        position: absolute; width: 50px; height: 60px; 
+        z-index: 4; filter: drop-shadow(0 5px 0 rgba(0,0,0,0.2)); 
+        transition: filter 0.1s; will-change: transform;
+    }
+    /* Hit Effect */
+    .sprite.hit { filter: brightness(1.5) drop-shadow(0 0 15px #ff0000); }
+    /* Powerup Effect */
+    .sprite.buffed { filter: drop-shadow(0 0 10px #ffeaa7) brightness(1.2); }
+
+    /* Character Parts (CSS Drawing) */
+    .human-head { position: absolute; top: 0px; left: 12px; width: 26px; height: 26px; border: 3px solid #244c32; border-radius: 50%; background: #f4bd8b; z-index: 2; }
+    .human-head:before { content: ""; position: absolute; top: -5px; left: 1px; width: 18px; height: 10px; border-radius: 50% 50% 35% 35%; background: #523528; }
+    .human-head:after { content: ""; position: absolute; right: 3px; top: 10px; width: 4px; height: 4px; border-radius: 50%; background: #293b32; box-shadow: -10px 0 #293b32; }
+    .human-body { position: absolute; top: 24px; left: 5px; width: 40px; height: 32px; border: 3px solid #244c32; border-radius: 12px 12px 8px 8px; background: #e85e43; }
+    .p2 .human-body { background: #27b6b0; }
+    .blaster { position: absolute; top: 32px; right: -15px; width: 32px; height: 12px; border: 3px solid #244c32; border-radius: 6px; background: #ff8b43; transform: rotate(-10deg); z-index: 3; box-shadow: 0 0 8px #ffe36b; }
+    .p2 .blaster { background: #43d6cf; box-shadow: 0 0 8px #a0ffff; }
+    
+    .badge { position: absolute; top: -20px; left: 50%; transform: translateX(-50%); font-weight: 800; font-size: 10px; color: white; background: #224d35; padding: 2px 6px; border-radius: 6px; z-index: 5; }
+
+    /* Obstacles (Rocks/Crates) */
+    .obstacle {
+        position: absolute; background: #7a7a7a; border: 4px solid #3b3b3b;
+        border-radius: 10px; z-index: 3; box-shadow: inset -4px -4px 0 #5c5c5c, 0 6px 0 rgba(0,0,0,0.3);
+        transform: translate(-50%, -50%); display: flex; align-items: center; justify-content: center;
+    }
+    .obstacle::after { content:""; width: 60%; height: 20%; background: rgba(0,0,0,0.2); border-radius: 50%; position: absolute; bottom: 10%;}
+
+    /* Powerups */
+    .powerup {
+        position: absolute; width: 28px; height: 28px; border-radius: 50%;
+        border: 3px solid #fff; z-index: 3; transform: translate(-50%, -50%);
+        box-shadow: 0 0 15px rgba(255,255,255,0.8);
+        animation: floatPu 1.5s infinite ease-in-out alternate;
+        display: flex; align-items: center; justify-content: center; font-size: 16px; font-weight: bold; text-shadow: 1px 1px 0 #000;
+    }
+    @keyframes floatPu { 0% { transform: translate(-50%, -40%); } 100% { transform: translate(-50%, -60%); } }
+    .pu-heal { background: #ff4757; color: white; }
+    .pu-rapid { background: #ffa502; color: white; }
+
+    /* Bullets */
+    .bullet { 
+        position: absolute; width: 14px; height: 14px; z-index: 5; border-radius: 50%; 
+        background: radial-gradient(circle, #fff 20%, #ffea00 60%, #ff8c00 100%);
+        border: 2px solid #fff; box-shadow: 0 0 10px 3px #ffc107; transform: translate(-50%, -50%);
+    }
+    .bullet.b-p2 { background: radial-gradient(circle, #fff 20%, #00e5ff 60%, #0088cc 100%); box-shadow: 0 0 10px 3px #00b0ff; }
+
+    /* Floating Text */
+    .dmg-text {
+        position: absolute; font-weight: 900; font-size: 18px; z-index: 10;
+        pointer-events: none; transform: translate(-50%, -50%);
+        animation: floatUpFade 0.8s cubic-bezier(0.215, 0.610, 0.355, 1.000) forwards;
+        text-shadow: 2px 2px 0 #000, -1px -1px 0 #000, 1px -1px 0 #000, -1px 1px 0 #000;
+    }
+    @keyframes floatUpFade {
+        0% { opacity: 1; margin-top: 0; transform: translate(-50%, -50%) scale(0.5); }
+        20% { transform: translate(-50%, -50%) scale(1.2); }
+        100% { opacity: 0; margin-top: -40px; transform: translate(-50%, -50%) scale(1); }
+    }
+
+    /* ================= CONTROLS ================= */
+    .controls-wrapper {
+        display: flex; justify-content: space-between; align-items: flex-end;
+        margin-top: 10px; padding: 0 5px; z-index: 10;
+    }
+    
+    /* Virtual D-Pad */
+    .d-pad-grid {
+        display: grid; grid-template-columns: repeat(3, 45px); grid-template-rows: repeat(3, 45px);
+        gap: 4px;
+    }
+    .ctrl-btn {
+        background: #fff8df; border: 3px solid #326f42; color: #326f42;
+        font-weight: 900; font-size: 18px; border-radius: 10px;
+        box-shadow: 0 5px 0 #326f42; transition: transform 0.05s, box-shadow 0.05s, background 0.05s;
+        display: flex; align-items: center; justify-content: center;
+    }
+    .ctrl-btn:active, .ctrl-btn.active { transform: translateY(5px); box-shadow: 0 0 0 #326f42; background: #e2f7bc; }
+    
+    #btn-up { grid-column: 2; grid-row: 1; }
+    #btn-left { grid-column: 1; grid-row: 2; }
+    #btn-right { grid-column: 3; grid-row: 2; }
+    #btn-down { grid-column: 2; grid-row: 3; }
+
+    /* Shoot Button */
+    .shoot-area { display: flex; flex-direction: column; align-items: center; gap: 5px; }
+    .btn-shoot {
+        background: #ff5722; border: 4px solid #bf360c; color: white; font-weight: 800;
+        box-shadow: 0 6px 0 #bf360c; font-size: 18px; width: 80px; height: 80px;
+        border-radius: 50%; display: flex; align-items: center; justify-content: center;
+        transition: transform 0.05s, box-shadow 0.05s;
+    }
+    .btn-shoot:active, .btn-shoot.active { transform: translateY(6px); box-shadow: 0 0 0 #bf360c; background: #e64a19; }
+    .key-hint { font-size: 11px; font-weight: bold; color: #376f40; }
+
+    .btn-reload {
+        background: #03a9f4; border: 4px solid #0277bd; color: white; font-weight: 800;
+        box-shadow: 0 6px 0 #0277bd; font-size: 14px; width: 60px; height: 60px;
+        border-radius: 50%; display: flex; flex-direction: column; align-items: center; justify-content: center;
+        transition: transform 0.05s, box-shadow 0.05s;
+    }
+    .btn-reload:active, .btn-reload.active { transform: translateY(6px); box-shadow: 0 0 0 #0277bd; background: #0288d1; }
+    .btn-reload span { font-size: 10px; }
+    
+    .shoot-container { display: flex; flex-direction: column; align-items: center; gap: 5px; }
+    .shoot-area { display: flex; flex-direction: row; align-items: flex-end; gap: 10px; }
+
+    .reload-wrapper { position: absolute; top: -30px; left: 50%; transform: translateX(-50%); width: 40px; height: 6px; background: #333; border: 1px solid #fff; border-radius: 4px; z-index: 10; overflow: hidden; }
+    .reload-bar { height: 100%; width: 0%; background: #ffea00; }
+
+    /* ================= SCREENS (OVERLAYS) ================= */
+    .overlay {
+        position: absolute; inset: 0; background: rgba(25, 63, 43, 0.85);
+        display: flex; justify-content: center; align-items: center;
+        z-index: 100; backdrop-filter: blur(4px); flex-direction: column;
+    }
+    .modal {
+        background: #fff8df; border: 6px solid #ffcf64; border-radius: 20px;
+        padding: 25px; text-align: center; box-shadow: 0 10px 20px rgba(0,0,0,0.4);
+        max-width: 90%; animation: popIn 0.3s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+    }
+    @keyframes popIn { 0% { transform: scale(0.5); opacity: 0; } 100% { transform: scale(1); opacity: 1; } }
+    .modal h2 { margin: 0 0 10px; font-size: 32px; text-shadow: 2px 2px 0 #fff; }
+    .modal p { margin: 0 0 20px; font-size: 16px; font-weight: 600; color: #333; }
+    .btn-main {
+        background: #67c858; border: 3px solid #376f40; color: white;
+        font-weight: 800; font-size: 20px; padding: 12px 30px; border-radius: 12px;
+        box-shadow: 0 6px 0 #376f40; text-transform: uppercase; letter-spacing: 1px;
+    }
+    .btn-main:active { transform: translateY(6px); box-shadow: 0 0 0 #376f40; }
+    
+    .hidden { display: none !important; }
+
+    @media (min-width: 600px) {
+        body { display: flex; justify-content: center; align-items: center; background: #112a1d; }
+        .app-container { max-width: 800px; height: 95vh; border-radius: 20px; box-shadow: 0 10px 30px rgba(0,0,0,0.5); }
+    }
+  </style>
+</head>
+<body>
+
+<div class="app-container" id="app-container">
+    <div class="header"><h1 class="game-title">Duel Hutan 2D</h1></div>
+
+    <!-- HUD -->
+    <div class="hud">
+        <div class="hud-card p1">
+            <div class="name">Player 1</div>
+            <div class="bar-bg"><div class="hp-fill" id="hp-fill-p1"></div><div class="hp-text" id="hp-txt-p1">100</div></div>
+            <div class="ammo-text" id="ammo-txt">Ammo: 10/10</div>
+        </div>
+        <div class="timer-card">
+            <div style="font-size: 10px; color: #ffcf64;">STAGE</div>
+            <div class="timer-text" id="stage-txt">1</div>
+        </div>
+        <div class="hud-card p2">
+            <div class="name">AI Musuh</div>
+            <div class="bar-bg"><div class="hp-fill" id="hp-fill-p2"></div><div class="hp-text" id="hp-txt-p2">100</div></div>
+        </div>
+    </div>
+
+    <!-- ARENA -->
+    <div class="arena" id="arena">
+        <div class="sun"></div>
+        <div class="hill one"></div>
+        <div class="hill two"></div>
+        
+        <!-- Dinamis Elements Wrapper -->
+        <div id="entities-layer">
+            <!-- P1 -->
+            <div class="sprite p1" id="sprite-p1">
+                <div class="reload-wrapper hidden" id="reload-wrapper"><div class="reload-bar" id="reload-bar"></div></div>
+                <div class="badge" id="badge-p1">P1</div>
+                <div class="human-body"></div>
+                <div class="human-head"></div>
+                <div class="blaster"></div>
+            </div>
+            <!-- P2 -->
+            <div class="sprite p2" id="sprite-p2">
+                <div class="badge" id="badge-p2">AI</div>
+                <div class="human-body"></div>
+                <div class="human-head"></div>
+                <div class="blaster"></div>
+            </div>
+        </div>
+    </div>
+
+    <!-- CONTROLS -->
+    <div class="controls-wrapper">
+        <div class="d-pad-grid">
+            <button class="ctrl-btn" id="btn-up">W</button>
+            <button class="ctrl-btn" id="btn-left">A</button>
+            <button class="ctrl-btn" id="btn-right">D</button>
+            <button class="ctrl-btn" id="btn-down">S</button>
+        </div>
+        <div class="shoot-area">
+            <div class="shoot-container">
+                <button class="btn-reload" id="btn-reload">RELOAD<br><span>(R)</span></button>
+            </div>
+            <div class="shoot-container">
+                <button class="btn-shoot" id="btn-shoot">FIRE</button>
+                <span class="key-hint">SPASI / TAP</span>
+            </div>
+        </div>
+    </div>
+
+    <!-- SCREENS -->
+    <div class="overlay" id="start-screen">
+        <div class="modal">
+            <h2 style="color: #244c32;">Duel Hutan Seru</h2>
+            <p>Gunakan WASD/D-Pad untuk bergerak.<br>Hindari rintangan, ambil item, tembak musuh!</p>
+            <p style="font-size: 14px; color: #ff5722;">❤ Heal | ⚡ Tembak Cepat</p>
+            <button class="btn-main" onclick="startGame()">Mulai Main</button>
+        </div>
+    </div>
+
+    <div class="overlay hidden" id="game-over-screen">
+        <div class="modal">
+            <h2 id="result-title">Game Over</h2>
+            <p id="result-desc">Kamu tumbang!</p>
+            <button class="btn-main" onclick="startGame()">Main Lagi</button>
+        </div>
+    </div>
+    
+    <div class="overlay hidden" id="stage-clear-screen">
+        <div class="modal">
+            <h2 style="color: #37834b;">STAGE CLEAR!</h2>
+            <p>Menyiapkan musuh selanjutnya...</p>
+        </div>
+    </div>
+</div>
+
+<script>
+/**
+ * Game Engine & Logic
+ */
+const arena = document.getElementById('arena');
+const entitiesLayer = document.getElementById('entities-layer');
+const appContainer = document.getElementById('app-container');
+
+// State Management
+let gameState = 'START'; // START, PLAYING, OVER, STAGE_TRANSITION
+let animationId;
+let powerupInterval;
+let currentStage = 1;
+let arenaRect = { w: 0, h: 0 };
+
+// Konfigurasi
+const CONFIG = {
+    MAX_HP: 100,
+    PLAYER_SPEED: 3.5,
+    AI_SPEED: 2.2,
+    BULLET_SPEED: 9,
+    BASE_COOLDOWN: 450,
+    RAPID_COOLDOWN: 150,
+    MAX_AMMO: 10,
+    RELOAD_TIME: 1500,
+    CHAR_W: 40, // Lebar hitbox
+    CHAR_H: 50  // Tinggi hitbox
+};
+
+// Data Entitas
+const p1 = {
+    id: 'p1', el: document.getElementById('sprite-p1'), badge: document.getElementById('badge-p1'),
+    hpFill: document.getElementById('hp-fill-p1'), hpTxt: document.getElementById('hp-txt-p1'),
+    x: 0, y: 0, w: CONFIG.CHAR_W, h: CONFIG.CHAR_H, 
+    hp: CONFIG.MAX_HP, maxHp: CONFIG.MAX_HP, cooldown: CONFIG.BASE_COOLDOWN, lastShoot: 0,
+    ammo: CONFIG.MAX_AMMO, isReloading: false, buffTimer: null
+};
+
+const p2 = {
+    id: 'p2', el: document.getElementById('sprite-p2'), badge: document.getElementById('badge-p2'),
+    hpFill: document.getElementById('hp-fill-p2'), hpTxt: document.getElementById('hp-txt-p2'),
+    x: 0, y: 0, w: CONFIG.CHAR_W, h: CONFIG.CHAR_H, 
+    hp: CONFIG.MAX_HP, maxHp: CONFIG.MAX_HP, cooldown: CONFIG.BASE_COOLDOWN, lastShoot: 0,
+    speed: CONFIG.AI_SPEED, baseCooldown: CONFIG.BASE_COOLDOWN,
+    dodgeTimer: 0, dodgeDir: 1 // AI specific properties
+};
+
+let bullets = [];
+let obstacles = [];
+let powerups = [];
+const keys = { w:false, a:false, s:false, d:false, space:false, r:false };
+
+// --- INISIALISASI ---
+function initArena() {
+    const rect = arena.getBoundingClientRect();
+    arenaRect.w = rect.width;
+    arenaRect.h = rect.height;
+    
+    // Posisi Awal Berhadapan
+    p1.x = 60; p1.y = arenaRect.h / 2;
+    p2.x = arenaRect.w - 60; p2.y = arenaRect.h / 2;
+    
+    updateDOM(p1); updateDOM(p2);
+}
+
+function createObstacles() {
+    obstacles.forEach(o => o.el.remove());
+    obstacles = [];
+    
+    const obsData = [
+        { x: arenaRect.w/2, y: arenaRect.h * 0.25, w: 55, h: 55 },
+        { x: arenaRect.w/2, y: arenaRect.h * 0.75, w: 55, h: 55 }
+    ];
+    
+    obsData.forEach(data => {
+        let el = document.createElement('div');
+        el.className = 'obstacle';
+        el.style.width = data.w + 'px';
+        el.style.height = data.h + 'px';
+        el.style.left = data.x + 'px';
+        el.style.top = data.y + 'px';
+        entitiesLayer.appendChild(el);
+        obstacles.push({ ...data, el });
+    });
+}
+
+// --- GAME LIFECYCLE ---
+function startGame() {
+    currentStage = 1;
+    document.getElementById('stage-txt').innerText = currentStage;
+    p2.maxHp = CONFIG.MAX_HP;
+    p2.speed = CONFIG.AI_SPEED;
+    p2.baseCooldown = CONFIG.BASE_COOLDOWN;
+    p1.hp = CONFIG.MAX_HP;
+    
+    document.getElementById('start-screen').classList.add('hidden');
+    document.getElementById('game-over-screen').classList.add('hidden');
+    
+    startStage();
+}
+
+function startStage() {
+    initArena();
+    createObstacles();
+    
+    bullets.forEach(b => b.el.remove()); bullets = [];
+    powerups.forEach(p => p.el.remove()); powerups = [];
+    
+    p2.hp = p2.maxHp;
+    p2.cooldown = p2.baseCooldown;
+    p1.cooldown = CONFIG.BASE_COOLDOWN;
+    p1.ammo = CONFIG.MAX_AMMO;
+    p1.isReloading = false;
+    document.getElementById('reload-wrapper').classList.add('hidden');
+    document.getElementById('ammo-txt').innerText = `Ammo: ${p1.ammo}/${CONFIG.MAX_AMMO}`;
+    
+    p1.el.classList.remove('buffed'); p2.el.classList.remove('buffed');
+    if(p1.buffTimer) clearTimeout(p1.buffTimer);
+    if(p2.buffTimer) clearTimeout(p2.buffTimer);
+    
+    updateHpUI(p1); updateHpUI(p2);
+    
+    gameState = 'PLAYING';
+    
+    clearInterval(powerupInterval);
+    powerupInterval = setInterval(spawnPowerup, 8000);
+    
+    cancelAnimationFrame(animationId);
+    gameLoop();
+}
+
+function stageClear() {
+    gameState = 'STAGE_TRANSITION';
+    const overlay = document.getElementById('stage-clear-screen');
+    overlay.classList.remove('hidden');
+    
+    currentStage++;
+    document.getElementById('stage-txt').innerText = currentStage;
+    
+    // AI Scale up
+    p2.maxHp += 30;
+    p2.speed = Math.min(4.5, p2.speed + 0.3); // Maksimal speed
+    p2.baseCooldown = Math.max(150, p2.baseCooldown - 50); // Makin cepat nembak
+    
+    // Heal P1
+    const healAmt = Math.floor(p1.maxHp * 0.3);
+    p1.hp = Math.min(p1.maxHp, p1.hp + healAmt);
+    updateHpUI(p1);
+    spawnDamageText(p1.x, p1.y - 20, -healAmt);
+    
+    setTimeout(() => {
+        overlay.classList.add('hidden');
+        startStage();
+    }, 2000);
+}
+
+function endGame(reason) {
+    gameState = 'OVER';
+    clearInterval(powerupInterval);
+    
+    const screen = document.getElementById('game-over-screen');
+    const title = document.getElementById('result-title');
+    const desc = document.getElementById('result-desc');
+    
+    if(reason === 'LOSE') { 
+        title.innerText = "KALAH!"; 
+        title.style.color = "#d32f2f"; 
+        desc.innerText = `Bertahan sampai Stage ${currentStage}`; 
+    }
+    screen.classList.remove('hidden');
+}
+
+// --- INPUT HANDLING ---
+window.addEventListener('keydown', e => {
+    if(e.code === 'KeyW' || e.code === 'ArrowUp') { keys.w = true; UIBtn('btn-up', true); }
+    if(e.code === 'KeyS' || e.code === 'ArrowDown') { keys.s = true; UIBtn('btn-down', true); }
+    if(e.code === 'KeyA' || e.code === 'ArrowLeft') { keys.a = true; UIBtn('btn-left', true); }
+    if(e.code === 'KeyD' || e.code === 'ArrowRight') { keys.d = true; UIBtn('btn-right', true); }
+    if(e.code === 'KeyR') { keys.r = true; UIBtn('btn-reload', true); reloadWeapon(); }
+    if(e.code === 'Space') { keys.space = true; UIBtn('btn-shoot', true); e.preventDefault(); }
+});
+window.addEventListener('keyup', e => {
+    if(e.code === 'KeyW' || e.code === 'ArrowUp') { keys.w = false; UIBtn('btn-up', false); }
+    if(e.code === 'KeyS' || e.code === 'ArrowDown') { keys.s = false; UIBtn('btn-down', false); }
+    if(e.code === 'KeyA' || e.code === 'ArrowLeft') { keys.a = false; UIBtn('btn-left', false); }
+    if(e.code === 'KeyD' || e.code === 'ArrowRight') { keys.d = false; UIBtn('btn-right', false); }
+    if(e.code === 'KeyR') { keys.r = false; UIBtn('btn-reload', false); }
+    if(e.code === 'Space') { keys.space = false; UIBtn('btn-shoot', false); }
+});
+
+function UIBtn(id, active) {
+    const el = document.getElementById(id);
+    if(active) el.classList.add('active'); else el.classList.remove('active');
+}
+
+// Touch Controls
+const bindBtn = (id, key) => {
+    const btn = document.getElementById(id);
+    const start = (e) => { e.preventDefault(); keys[key] = true; btn.classList.add('active'); };
+    const end = (e) => { e.preventDefault(); keys[key] = false; btn.classList.remove('active'); };
+    btn.addEventListener('touchstart', start, {passive: false});
+    btn.addEventListener('touchend', end, {passive: false});
+    btn.addEventListener('mousedown', start);
+    window.addEventListener('mouseup', () => { if(keys[key]) end({preventDefault:()=>{}}); });
+};
+bindBtn('btn-up', 'w'); bindBtn('btn-down', 's'); bindBtn('btn-left', 'a'); bindBtn('btn-right', 'd');
+bindBtn('btn-shoot', 'space');
+
+const btnReload = document.getElementById('btn-reload');
+btnReload.addEventListener('mousedown', reloadWeapon);
+btnReload.addEventListener('touchstart', (e) => { e.preventDefault(); reloadWeapon(); btnReload.classList.add('active'); }, {passive: false});
+btnReload.addEventListener('touchend', (e) => { e.preventDefault(); btnReload.classList.remove('active'); }, {passive: false});
+
+// --- PHYSICS & COLLISION ---
+function intersect(a, b) {
+    return !(
+        (a.x - a.w/2) > (b.x + b.w/2) || 
+        (a.x + a.w/2) < (b.x - b.w/2) || 
+        (a.y - a.h/2) > (b.y + b.h/2) || 
+        (a.y + a.h/2) < (b.y - b.h/2)
+    );
+}
+
+function moveEntity(ent, dx, dy) {
+    ent.x += dx;
+    if(ent.x - ent.w/2 < 0 || ent.x + ent.w/2 > arenaRect.w) ent.x -= dx;
+    for(let obs of obstacles) { if(intersect(ent, obs)) { ent.x -= dx; break; } }
+    
+    ent.y += dy;
+    if(ent.y - ent.h/2 < 0 || ent.y + ent.h/2 > arenaRect.h) ent.y -= dy;
+    for(let obs of obstacles) { if(intersect(ent, obs)) { ent.y -= dy; break; } }
+}
+
+// --- ACTIONS ---
+function shoot(char) {
+    const now = Date.now();
+    if(now - char.lastShoot < char.cooldown) return;
+    
+    if(char.id === 'p1') {
+        if(char.isReloading) return;
+        if(char.ammo <= 0) { reloadWeapon(); return; }
+        char.ammo--;
+        document.getElementById('ammo-txt').innerText = `Ammo: ${char.ammo}/${CONFIG.MAX_AMMO}`;
+        if(char.ammo <= 0) reloadWeapon();
+    }
+    
+    char.lastShoot = now;
+    
+    // AIM BOT LOGIC (Hitung Sudut ke target)
+    let target = char.id === 'p1' ? p2 : p1;
+    let angle = Math.atan2(target.y - char.y, target.x - char.x);
+    
+    // AI Inaccuracy (Opsional, agar tidak terlalu sakti di stage awal)
+    if(char.id === 'p2') {
+        const inaccuracy = (Math.random() - 0.5) * (0.3 / currentStage); // Makin tinggi stage, makin presisi
+        angle += inaccuracy;
+    }
+
+    const isP1 = char.id === 'p1';
+    // Offset tembakan agar muncul dari mulut pistol
+    const spawnOffsetX = (char.x > target.x) ? -20 : 20;
+
+    const b = {
+        x: char.x + spawnOffsetX, y: char.y,
+        w: 14, h: 14, 
+        vx: Math.cos(angle) * CONFIG.BULLET_SPEED, 
+        vy: Math.sin(angle) * CONFIG.BULLET_SPEED,
+        owner: char.id, el: document.createElement('div')
+    };
+    
+    b.el.className = `bullet ${isP1 ? 'b-p1' : 'b-p2'}`;
+    b.el.style.left = b.x + 'px'; b.el.style.top = b.y + 'px';
+    entitiesLayer.appendChild(b.el);
+    bullets.push(b);
+}
+
+function reloadWeapon() {
+    if(p1.isReloading || p1.ammo >= CONFIG.MAX_AMMO || gameState !== 'PLAYING') return;
+    p1.isReloading = true;
+    
+    const wrapper = document.getElementById('reload-wrapper');
+    const bar = document.getElementById('reload-bar');
+    wrapper.classList.remove('hidden');
+    bar.style.transition = 'none';
+    bar.style.width = '0%';
+    
+    void bar.offsetWidth;
+    bar.style.transition = `width ${CONFIG.RELOAD_TIME}ms linear`;
+    bar.style.width = '100%';
+    
+    setTimeout(() => {
+        if(gameState !== 'PLAYING') return; 
+        p1.ammo = CONFIG.MAX_AMMO;
+        p1.isReloading = false;
+        document.getElementById('ammo-txt').innerText = `Ammo: ${p1.ammo}/${CONFIG.MAX_AMMO}`;
+        wrapper.classList.add('hidden');
+    }, CONFIG.RELOAD_TIME);
+}
+
+function applyDamage(char, amt) {
+    char.hp = Math.max(0, char.hp - amt);
+    updateHpUI(char);
+    
+    char.el.classList.add('hit');
+    setTimeout(() => char.el.classList.remove('hit'), 150);
+    screenShake();
+    spawnDamageText(char.x, char.y - 20, Math.floor(amt));
+    
+    if(char.hp <= 0) {
+        if(char.id === 'p1') endGame('LOSE');
+        else stageClear();
+    }
+}
+
+function updateHpUI(char) {
+    const pct = (char.hp / char.maxHp) * 100;
+    char.hpFill.style.width = pct + '%';
+    char.hpTxt.innerText = Math.floor(char.hp);
+    if(pct <= 30) char.hpFill.style.backgroundColor = '#d32f2f';
+    else char.hpFill.style.backgroundColor = ''; 
+}
+
+function screenShake() {
+    appContainer.classList.remove('shake-active');
+    void appContainer.offsetWidth;
+    appContainer.classList.add('shake-active');
+}
+
+function spawnDamageText(x, y, amt) {
+    const el = document.createElement('div');
+    el.className = 'dmg-text';
+    el.innerText = '-' + amt;
+    el.style.left = x + 'px'; el.style.top = y + 'px';
+    if(amt < 0) { el.innerText = '+' + Math.abs(amt); el.style.color = '#55efc4'; } 
+    else { el.style.color = '#ff7675'; }
+    entitiesLayer.appendChild(el);
+    setTimeout(() => el.remove(), 800);
+}
+
+function spawnPowerup() {
+    if(gameState !== 'PLAYING' || powerups.length >= 2) return;
+    const type = Math.random() > 0.5 ? 'heal' : 'rapid';
+    
+    let x, y, safe = false, attempts = 0;
+    while(!safe && attempts < 10) {
+        x = 40 + Math.random() * (arenaRect.w - 80);
+        y = 40 + Math.random() * (arenaRect.h - 80);
+        let testBox = {x, y, w:30, h:30};
+        safe = !obstacles.some(o => intersect(testBox, o));
+        attempts++;
+    }
+    
+    if(!safe) return;
+    
+    const el = document.createElement('div');
+    el.className = `powerup pu-${type}`;
+    el.innerText = type === 'heal' ? '❤' : '⚡';
+    el.style.left = x + 'px'; el.style.top = y + 'px';
+    entitiesLayer.appendChild(el);
+    powerups.push({ x, y, w:28, h:28, type, el, spawnTime: Date.now() });
+}
+
+function applyPowerup(char, pu) {
+    if(pu.type === 'heal') {
+        char.hp = Math.min(char.maxHp, char.hp + 30);
+        updateHpUI(char);
+        spawnDamageText(char.x, char.y - 20, -30); 
+    } else if(pu.type === 'rapid') {
+        char.cooldown = CONFIG.RAPID_COOLDOWN;
+        char.el.classList.add('buffed');
+        if(char.buffTimer) clearTimeout(char.buffTimer);
+        char.buffTimer = setTimeout(() => {
+            char.cooldown = CONFIG.BASE_COOLDOWN;
+            char.el.classList.remove('buffed');
+        }, 5000);
+    }
+    pu.el.remove();
+}
+
+function updateDOM(char) {
+    // ROTASI OTOMATIS: Karakter saling berhadapan!
+    let flip = '';
+    let target = char.id === 'p1' ? p2 : p1;
+    
+    // Jika posisi char X lebih besar dari target (berarti di kanan target), menghadap kiri
+    if(char.x > target.x) { flip = 'scaleX(-1)'; char.badge.style.transform = 'translateX(-50%) scaleX(-1)'; }
+    // Menghadap kanan (default)
+    else { flip = 'scaleX(1)'; char.badge.style.transform = 'translateX(-50%) scaleX(1)'; }
+
+    char.el.style.transform = `translate(${char.x}px, ${char.y}px) translate(-50%, -50%) ${flip}`;
+    char.el.style.left = '0px'; 
+    char.el.style.top = '0px';
+}
+
+
+// --- MAIN LOOP ---
+function gameLoop() {
+    if(gameState !== 'PLAYING') return;
+
+    // 1. UPDATE P1
+    let dx = 0, dy = 0;
+    if(keys.w) dy -= CONFIG.PLAYER_SPEED;
+    if(keys.s) dy += CONFIG.PLAYER_SPEED;
+    if(keys.a) dx -= CONFIG.PLAYER_SPEED;
+    if(keys.d) dx += CONFIG.PLAYER_SPEED;
+    
+    if(dx !== 0 && dy !== 0) { dx *= 0.707; dy *= 0.707; }
+    if(dx !== 0 || dy !== 0) moveEntity(p1, dx, dy);
+    if(keys.space) shoot(p1);
+
+    // 2. UPDATE AI P2 (2D Smart Chase & Dodge)
+    const now = Date.now();
+    let adx = 0, ady = 0;
+    
+    // Kalkulasi jarak
+    let diffX = p1.x - p2.x;
+    let diffY = p1.y - p2.y;
+    let dist = Math.hypot(diffX, diffY);
+    
+    // Jarak Ideal Tempur (150px - 250px)
+    if (dist > 250) {
+        // Terlalu jauh -> Kejar!
+        adx = (diffX / dist) * p2.speed;
+        ady = (diffY / dist) * p2.speed;
+    } else if (dist < 150) {
+        // Terlalu dekat -> Mundur!
+        adx = -(diffX / dist) * p2.speed;
+        ady = -(diffY / dist) * p2.speed;
+    } else {
+        // Jarak ideal -> Strafe/Dodge (Jalan menyamping)
+        if (now > p2.dodgeTimer) {
+            p2.dodgeDir = Math.random() > 0.5 ? 1 : -1;
+            p2.dodgeTimer = now + 600 + Math.random() * 800; // ganti arah secara acak
+        }
+        adx = -(diffY / dist) * p2.speed * p2.dodgeDir;
+        ady = (diffX / dist) * p2.speed * p2.dodgeDir;
+    }
+
+    // Tembak secara dinamis jika tidak terhalang obstacle
+    let blocked = obstacles.some(o => intersect({
+        // Buat box imajiner antara musuh dan kita
+        x: (p1.x + p2.x)/2, y: (p1.y + p2.y)/2, 
+        w: Math.abs(diffX), h: Math.abs(diffY)
+    }, o));
+
+    if (!blocked) {
+        // Tembak terus menerus dengan jeda cooldown
+        shoot(p2); 
+    }
+
+    moveEntity(p2, adx, ady);
+
+    // Render ulang DOM Positions
+    updateDOM(p1);
+    updateDOM(p2);
+
+    // 3. BULLETS (2D Movement)
+    for (let i = bullets.length - 1; i >= 0; i--) {
+        let b = bullets[i];
+        b.x += b.vx;
+        b.y += b.vy; // Peluru sekarang gerak sumbu Y juga!
+        b.el.style.transform = `translate(${b.x}px, ${b.y}px) translate(-50%, -50%)`;
+        b.el.style.left = '0'; b.el.style.top = '0'; 
+
+        // Out of bounds
+        if(b.x < 0 || b.x > arenaRect.w || b.y < 0 || b.y > arenaRect.h) { 
+            b.el.remove(); bullets.splice(i, 1); continue; 
+        }
+        
+        // Tabrak Rintangan
+        let hitObs = false;
+        for(let obs of obstacles) {
+            if(intersect(b, obs)) { hitObs = true; b.el.remove(); bullets.splice(i, 1); break; }
+        }
+        if(hitObs) continue;
+        
+        // Tabrak Karakter
+        let target = b.owner === 'p1' ? p2 : p1;
+        if(intersect(b, target)) {
+            applyDamage(target, 12 + Math.floor(Math.random()*6)); // Dmg 12-17
+            b.el.remove(); bullets.splice(i, 1);
+        }
+    }
+    
+    // 4. POWERUPS
+    for (let i = powerups.length - 1; i >= 0; i--) {
+        let pu = powerups[i];
+        if(now - pu.spawnTime > 10000) { 
+            pu.el.remove(); powerups.splice(i, 1); continue;
+        }
+        if(intersect(p1, pu)) { applyPowerup(p1, pu); powerups.splice(i, 1); continue; }
+        if(intersect(p2, pu)) { applyPowerup(p2, pu); powerups.splice(i, 1); continue; }
+    }
+
+    animationId = requestAnimationFrame(gameLoop);
+}
+
+// Window resize handler
+window.addEventListener('resize', () => {
+    if(gameState === 'PLAYING') {
+        const oldW = arenaRect.w;
+        const rect = arena.getBoundingClientRect();
+        arenaRect.w = rect.width; arenaRect.h = rect.height;
+        if(oldW > 0 && Math.abs(oldW - arenaRect.w) > 50) {
+           p1.x = Math.min(p1.x, arenaRect.w / 2 - 20);
+           p2.x = Math.max(p2.x, arenaRect.w / 2 + 20);
+           createObstacles();
+        }
+    }
+});
+
+// Setup Arena awal
+setTimeout(() => {
+    initArena();
+}, 100);
+
+</script>
+</body>
+</html>
